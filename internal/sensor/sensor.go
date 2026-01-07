@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	defaultMeanPressure    = 0.05 // МПа
-	defaultMeanTemperature = 24.0 //
+	defaultMeanPressure    = 0.05
+	defaultMeanTemperature = 24.0
 	anomalyProbability     = 0.03
 	anomalyDuration        = 10
-	deltaPa                = 19.6133 // Паскали
+	deltaPa                = 196133
 	deltaMPa               = deltaPa / 1e6
 )
 
@@ -27,8 +27,8 @@ func Run(ctx context.Context, cfg *config.Config, deviceID int) {
 	slog.InfoContext(ctx, "device started", "device_id", deviceID, "msg_frequency", cfg.MsgFrequency)
 
 	anomalyCounter := 0
-	anomalyDirection := 0                                              // 1: up, -1: down
-	anomalyIncrement := float32(deltaMPa / float64(anomalyDuration-1)) // приращение на пакет для достижения delta за 10 пакетов
+	anomalyDirection := 0
+	anomalyIncrement := float32(deltaMPa / float64(anomalyDuration-1))
 	currentMeanPressure := float32(defaultMeanPressure)
 
 	for {
@@ -53,7 +53,7 @@ func Run(ctx context.Context, cfg *config.Config, deviceID int) {
 				currentMeanPressure += float32(anomalyDirection) * anomalyIncrement
 				anomalyCounter--
 				if anomalyCounter == 0 {
-					currentMeanPressure = defaultMeanPressure // сброс после аномалии
+					currentMeanPressure = defaultMeanPressure
 					slog.InfoContext(ctx, "anomaly ended", "device_id", deviceID)
 				}
 			}

@@ -11,6 +11,7 @@ type Config struct {
 	IotSystemUrl string `yaml:"iot_system_url" env-required:"true"`
 	DeviceNumber int    `yaml:"device_number" env-required:"true"`
 	MsgFrequency int    `yaml:"msg_frequency" env-required:"true"`
+	MetricsAddr  string `yaml:"metrics_addr" env-default:":9092"`
 }
 
 func MustLoad() *Config {

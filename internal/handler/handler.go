@@ -16,12 +16,14 @@ import (
 type Handler struct {
 	collection *mongo.Collection
 	rabbitCh   *amqp.Channel
+	queueName  string
 }
 
-func New(collection *mongo.Collection, rabbitCh *amqp.Channel) *Handler {
+func New(collection *mongo.Collection, rabbitCh *amqp.Channel, queueName string) *Handler {
 	return &Handler{
 		collection: collection,
 		rabbitCh:   rabbitCh,
+		queueName:  queueName,
 	}
 }
 
@@ -68,7 +70,7 @@ func (h *Handler) HandlePacket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.rabbitCh.PublishWithContext(ctx, "", "packets", false, false, amqp.Publishing{
+	err = h.rabbitCh.PublishWithContext(ctx, "", h.queueName, false, false, amqp.Publishing{
 		ContentType: "application/json",
 		Body:        body,
 	})

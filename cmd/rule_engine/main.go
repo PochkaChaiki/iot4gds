@@ -1,9 +1,9 @@
-// cmd/main.go
 package main
 
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,13 +12,21 @@ import (
 	"github.com/pochkachaiki/iot4gds/internal/engine"
 	"github.com/pochkachaiki/iot4gds/internal/queue"
 	"github.com/pochkachaiki/iot4gds/internal/storage"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+func setupLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stdout, nil))
+}
+
 func main() {
+	logger := setupLogger()
+	slog.SetDefault(logger)
+
 	cfg := config.MustLoad()
 
 	slog.Info("starting rule engine", "mongo_uri", cfg.MongoURI, "rabbit_uri", cfg.RabbitURI, "queue", cfg.QueueName,
-		"sustained_count", cfg.SustainedCount, "delta_pressure", cfg.DeltaPressure)
+		"sustained_count", cfg.SustainedCount, "delta_pressure", cfg.DeltaPressure, "metrics_addr", cfg.MetricsAddr)
 
 	mongoClient, err := storage.NewMongoClient(cfg.MongoURI)
 	if err != nil {
@@ -52,6 +60,13 @@ func main() {
 	alertColl := db.Collection(cfg.AlertCollection)
 
 	e := engine.New(cfg, packetColl, alertColl)
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		if err := http.ListenAndServe(cfg.MetricsAddr, nil); err != nil {
+			slog.Error("metrics server error", "err", err)
+		}
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {

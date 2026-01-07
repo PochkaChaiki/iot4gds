@@ -15,7 +15,8 @@ type Config struct {
 	PacketCollection string  `yaml:"packet_collection" env-default:"packets"`
 	AlertCollection  string  `yaml:"alert_collection" env-default:"alerts"`
 	SustainedCount   int     `yaml:"sustained_count" env-default:"10"`
-	DeltaPressure    float32 `yaml:"delta_pressure" env-default:"0.0000196133"`
+	DeltaPressure    float32 `yaml:"delta_pressure" env-default:"0.196133"`
+	MetricsAddr      string  `yaml:"metrics_addr" env-default:":9091"`
 }
 
 func MustLoad() *Config {

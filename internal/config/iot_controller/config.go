@@ -8,9 +8,12 @@ import (
 )
 
 type Config struct {
-	HTTPAddr  string `yaml:"http_addr" env-required:"true"`
-	MongoURI  string `yaml:"mongo_uri" env-required:"true"`
-	RabbitURI string `yaml:"rabbit_uri" env-required:"true"`
+	HTTPAddr         string `yaml:"http_addr" env-required:"true"`
+	MongoURI         string `yaml:"mongo_uri" env-required:"true"`
+	RabbitURI        string `yaml:"rabbit_uri" env-required:"true"`
+	QueueName        string `yaml:"queue_name" env-default:"packets"`
+	DBName           string `yaml:"db_name" env-default:"iot"`
+	PacketCollection string `yaml:"packet_collection" env-default:"packets"`
 }
 
 func MustLoad() *Config {

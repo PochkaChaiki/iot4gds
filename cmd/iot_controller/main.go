@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -13,15 +13,21 @@ import (
 	"github.com/pochkachaiki/iot4gds/internal/handler"
 	"github.com/pochkachaiki/iot4gds/internal/queue"
 	"github.com/pochkachaiki/iot4gds/internal/storage"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func main() {
-	cfg := config.MustLoad()
+func setupLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stdout, nil))
+}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+func main() {
+	logger := setupLogger()
 	slog.SetDefault(logger)
 
-	slog.Info("starting iot controller", "http_addr", cfg.HTTPAddr, "mongo_uri", cfg.MongoURI, "rabbit_uri", cfg.RabbitURI)
+	cfg := config.MustLoad()
+
+	slog.Info("starting rule engine", "mongo_uri", cfg.MongoURI, "rabbit_uri", cfg.RabbitURI,
+		"queue", cfg.QueueName)
 
 	mongoClient, err := storage.NewMongoClient(cfg.MongoURI)
 	if err != nil {
@@ -44,19 +50,20 @@ func main() {
 	}
 	defer rabbitCh.Close()
 
-	err = queue.DeclareQueue(rabbitCh, "packets")
+	err = queue.DeclareQueue(rabbitCh, cfg.QueueName)
 	if err != nil {
 		slog.Error("declare queue error", "err", err)
 		os.Exit(1)
 	}
 
-	db := mongoClient.Database("iot")
-	collection := db.Collection("packets")
+	db := mongoClient.Database(cfg.DBName)
+	collection := db.Collection(cfg.PacketCollection)
 
-	h := handler.New(collection, rabbitCh)
+	h := handler.New(collection, rabbitCh, cfg.QueueName)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /packets", h.HandlePacket)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPAddr,

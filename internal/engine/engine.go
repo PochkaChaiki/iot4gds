@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"sort"
+	"sync"
 	"time"
 
 	config "github.com/pochkachaiki/iot4gds/internal/config/rule_engine"
@@ -28,19 +29,64 @@ type RecentPacket struct {
 	Pressure  float32 `bson:"pressure"`
 }
 
+// type Engine struct {
+// 	cfg        *config.Config
+// 	packetColl *mongo.Collection
+// 	alertColl  *mongo.Collection
+// }
+
 type Engine struct {
-	cfg        *config.Config
-	packetColl *mongo.Collection
-	alertColl  *mongo.Collection
+	cfg         *config.Config
+	packetColl  *mongo.Collection
+	alertColl   *mongo.Collection
+	mu          sync.RWMutex
+	recentCache map[int][]packet.Packet
 }
 
 func New(cfg *config.Config, packetColl, alertColl *mongo.Collection) *Engine {
 	return &Engine{
-		cfg:        cfg,
-		packetColl: packetColl,
-		alertColl:  alertColl,
+		cfg:         cfg,
+		packetColl:  packetColl,
+		alertColl:   alertColl,
+		recentCache: make(map[int][]packet.Packet),
 	}
 }
+
+func (e *Engine) updateCache(p packet.Packet) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	queue := e.recentCache[p.DeviceID]
+	if len(queue) >= e.cfg.SustainedCount {
+		queue = queue[1:]
+	}
+	queue = append(queue, p)
+	e.recentCache[p.DeviceID] = queue
+}
+
+func (e *Engine) getRecentPressures(deviceID int) []float32 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	packets := e.recentCache[deviceID]
+	if len(packets) < e.cfg.SustainedCount {
+		return nil
+	}
+
+	pressures := make([]float32, len(packets))
+	for i, pkt := range packets {
+		pressures[i] = pkt.Pressure
+	}
+	return pressures
+}
+
+// func New(cfg *config.Config, packetColl, alertColl *mongo.Collection) *Engine {
+// 	return &Engine{
+// 		cfg:        cfg,
+// 		packetColl: packetColl,
+// 		alertColl:  alertColl,
+// 	}
+// }
 
 func (e *Engine) Run(ctx context.Context, ch *amqp.Channel, queue string) {
 	msgs, err := ch.Consume(queue, "", false, false, false, false, nil)
@@ -60,7 +106,6 @@ func (e *Engine) Run(ctx context.Context, ch *amqp.Channel, queue string) {
 			}
 			if err := e.processMessage(ctx, msg.Body); err != nil {
 				slog.Error("process message error", "err", err)
-				// For simple, still ack, in prod maybe nack
 			}
 			if err := msg.Ack(false); err != nil {
 				slog.Error("ack error", "err", err)
@@ -75,10 +120,11 @@ func (e *Engine) processMessage(parentCtx context.Context, body []byte) error {
 		return err
 	}
 
+	e.updateCache(p) // всегда обновляем кэш
+
 	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Second)
 	defer cancel()
 
-	// Instant rule
 	reason := ""
 	if p.Pressure < lowPressure {
 		reason = "pressure low"
@@ -104,33 +150,35 @@ func (e *Engine) processMessage(parentCtx context.Context, body []byte) error {
 		slog.Info("instant alert", "device_id", p.DeviceID, "reason", reason)
 	}
 
-	// Sustained rule
-	opts := options.Find().SetSort(bson.D{{Key: "timestamp", Value: -1}}).SetLimit(int64(e.cfg.SustainedCount))
-	cursor, err := e.packetColl.Find(ctx, bson.M{"device_id": p.DeviceID}, opts)
-	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	var recents []RecentPacket
-	if err := cursor.All(ctx, &recents); err != nil {
-		return err
-	}
-
-	if len(recents) < e.cfg.SustainedCount {
-		return nil
-	}
-
-	// Sort by timestamp asc (since queried desc)
-	sort.Slice(recents, func(i, j int) bool {
-		ti, _ := time.Parse(time.RFC3339, recents[i].Timestamp)
-		tj, _ := time.Parse(time.RFC3339, recents[j].Timestamp)
-		return ti.Before(tj)
-	})
-
 	var pressures []float32
-	for _, r := range recents {
-		pressures = append(pressures, r.Pressure)
+
+	// Sustained rule — сначала проверяем кэш. Если в кэше нет - идём в бд
+	if pressures = e.getRecentPressures(p.DeviceID); pressures == nil {
+		opts := options.Find().SetSort(bson.D{{Key: "timestamp", Value: -1}}).SetLimit(int64(e.cfg.SustainedCount))
+		cursor, err := e.packetColl.Find(ctx, bson.M{"device_id": p.DeviceID}, opts)
+		if err != nil {
+			return err
+		}
+		defer cursor.Close(ctx)
+
+		var recents []RecentPacket
+		if err := cursor.All(ctx, &recents); err != nil {
+			return err
+		}
+
+		if len(recents) < e.cfg.SustainedCount {
+			return nil
+		}
+
+		sort.Slice(recents, func(i, j int) bool {
+			ti, _ := time.Parse(time.RFC3339, recents[i].Timestamp)
+			tj, _ := time.Parse(time.RFC3339, recents[j].Timestamp)
+			return ti.Before(tj)
+		})
+
+		for _, r := range recents {
+			pressures = append(pressures, r.Pressure)
+		}
 	}
 
 	change := pressures[len(pressures)-1] - pressures[0]
