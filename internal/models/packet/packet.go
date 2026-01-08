@@ -7,8 +7,8 @@ import (
 )
 
 type Packet struct {
-	DeviceID    int     `json:"device_id"`
 	Timestamp   string  `json:"timestamp"`
+	DeviceID    int     `json:"device_id"`
 	Pressure    float32 `json:"pressure"`
 	Temperature float32 `json:"temperature"`
 }

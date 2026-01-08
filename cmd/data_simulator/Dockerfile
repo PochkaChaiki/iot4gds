@@ -8,18 +8,18 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o data-simulator ./cmd/data-simulator/main.go
+RUN go build -o data_simulator ./cmd/data_simulator/main.go
 
 FROM alpine:latest
 
 WORKDIR /app
 
-COPY --from=builder /app/data-simulator /app/data-simulator
+COPY --from=builder /app/data_simulator /app/data_simulator
 
-COPY cmd/data_simulator/data_simulator.yaml /app/config.yaml
+COPY --from=builder /app/cmd/data_simulator/data_simulator.yaml /app/config.yaml
 
 ENV CONFIG_PATH=/app/config.yaml
 
 EXPOSE 9092
 
-CMD ["/app/data-simulator"]
+CMD ["/app/data_simulator"]

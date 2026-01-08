@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -8,18 +8,18 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o rule-engine ./cmd/rule-engine/main.go
+RUN go build -o rule_engine ./cmd/rule_engine/main.go
 
 FROM alpine:latest
 
 WORKDIR /app
 
-COPY --from=builder /app/rule-engine /app/rule-engine
+COPY --from=builder /app/rule_engine /app/rule_engine
 
-COPY cmd/rule_engine/rule_engine.yaml /app/config.yaml
+COPY --from=builder /app/cmd/rule_engine/rule_engine.yaml /app/config.yaml
 
 ENV CONFIG_PATH=/app/config.yaml
 
 EXPOSE 9091
 
-CMD ["/app/rule-engine"]
+CMD ["/app/rule_engine"]

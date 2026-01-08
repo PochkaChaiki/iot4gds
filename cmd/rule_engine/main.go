@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,9 +17,12 @@ import (
 )
 
 func setupLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	f, err := os.OpenFile("/app/logs/app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(fmt.Sprintf("open log file: %v", err))
+	}
+	return slog.New(slog.NewJSONHandler(f, nil))
 }
-
 func main() {
 	logger := setupLogger()
 	slog.SetDefault(logger)

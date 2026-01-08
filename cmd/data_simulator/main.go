@@ -26,7 +26,7 @@ func main() {
 
 	slog.Info("starting simulator",
 		"device_number", cfg.DeviceNumber,
-		"msg_frequency", cfg.MsgFrequency,
+		"msg_period", cfg.MsgPeriod,
 		"iot_system_url", cfg.IotSystemUrl,
 		"metrics_addr", cfg.MetricsAddr)
 

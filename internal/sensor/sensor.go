@@ -21,10 +21,10 @@ const (
 )
 
 func Run(ctx context.Context, cfg *config.Config, deviceID int) {
-	ticker := time.NewTicker(time.Duration(cfg.MsgFrequency) * time.Second)
+	ticker := time.NewTicker(time.Duration(cfg.MsgPeriod) * time.Second)
 	defer ticker.Stop()
 
-	slog.InfoContext(ctx, "device started", "device_id", deviceID, "msg_frequency", cfg.MsgFrequency)
+	slog.InfoContext(ctx, "device started", "device_id", deviceID, "msg_period", cfg.MsgPeriod)
 
 	anomalyCounter := 0
 	anomalyDirection := 0
