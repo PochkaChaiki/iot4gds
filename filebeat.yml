@@ -1,0 +1,34 @@
+filebeat.inputs:
+  - type: filestream
+    id: rule-engine-logs
+    enabled: true
+    paths:
+      - /host_logs/rule_engine/*.log
+    fields:
+      app: rule-engine
+    fields_under_root: true
+
+  - type: filestream
+    id: iot-controller-logs
+    enabled: true
+    paths:
+      - /host_logs/iot_controller/*.log
+    fields:
+      app: iot-controller
+    fields_under_root: true
+
+  - type: filestream
+    id: mongodb-logs
+    enabled: true
+    paths:
+      - /host_logs/mongodb/*.log
+    fields:
+      app: mongodb
+    fields_under_root: true
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+logging.level: info
+logging.to_files: false
+logging.to_syslog: false

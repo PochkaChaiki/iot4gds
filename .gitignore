@@ -1,4 +1,3 @@
-*.yaml
-*.yml
-*.conf
+/cmd/*/*.yaml
 /logs
+.env

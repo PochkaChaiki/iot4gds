@@ -1,0 +1,184 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: iot_mongodb
+    command: >
+      sh -c "chown -R mongodb:mongodb /var/log/mongodb &&
+           mkdir -p /var/log/mongodb &&
+           mongod --bind_ip_all --logpath /var/log/mongodb/mongod.log --quiet"
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongodb_data:/data/db
+      - ./logs/mongodb:/var/log/mongodb
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: iot_mongo_express
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${ME_CONFIG_MONGODB_ADMINUSERNAME}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${ME_CONFIG_MONGODB_ADMINPASSWORD}
+      ME_CONFIG_MONGODB_SERVER: mongodb
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: iot_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rule-engine:
+    build:
+      context: .
+      dockerfile: cmd/rule_engine/Dockerfile
+    container_name: iot_rule_engine
+    ports:
+      - "9091:9091"
+    environment:
+      CONFIG_PATH: /app/config.yaml
+    volumes:
+      - ./cmd/rule_engine/rule_engine.yaml:/app/config.yaml
+      - ./logs/rule_engine:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  iot-controller:
+    build:
+      context: .
+      dockerfile: cmd/iot_controller/Dockerfile
+    container_name: iot_controller
+    ports:
+      - "5555:5555"
+    environment:
+      CONFIG_PATH: /app/config.yaml
+    volumes:
+      - ./cmd/iot_controller/iot_controller.yaml:/app/config.yaml
+      - ./logs/iot_controller:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+
+  data-simulator:
+    build:
+      context: .
+      dockerfile: cmd/data_simulator/Dockerfile
+    container_name: iot_data_simulator
+    ports:
+      - "9092:9092"
+    environment:
+      CONFIG_PATH: /app/config.yaml
+    volumes:
+      - ./cmd/data_simulator/data_simulator.yaml:/app/config.yaml
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    depends_on:
+      iot-controller:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: iot_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    depends_on:
+      - rule-engine
+      - data-simulator
+      - iot-controller
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: iot_grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+    depends_on:
+      - prometheus
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.0.0
+    container_name: iot_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    user: root
+    volumes:
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./logs:/host_logs:ro
+    depends_on:
+      - logstash
+    command: ["filebeat", "-e", "-strict.perms=false"]
+  
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.0.0
+    container_name: iot_logstash
+    volumes:
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    depends_on:
+      - elasticsearch
+    ports:
+      - "9600:9600"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.0.0
+    container_name: iot_kibana
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+volumes:
+  mongodb_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:
+  filebeat_data:
